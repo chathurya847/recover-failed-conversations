@@ -9,7 +9,9 @@ Usage:
     python run_conversation.py <...> --dry-run             only show what would be sent (no network, no records)
 
 The data file is the JSON export named by DATA_FILE_PATH in .env (default: data.json next to this script). Each
-entry is a conversation with a "sessions" list or a single "session" object.
+entry is a conversation with a "sessions" list or a single "session" object, or (session-data.json) a session
+document itself with "conversation_id" and "user_input". For that flat shape the attachments are the files in
+downloads/<conversation_id>/, and the "Attachments:" list at the end of the user_input says how many are expected.
 
 For every id the script finds the session in the data file:
   - a SESSION id        -> that session
@@ -138,6 +140,35 @@ def plain_id(value):
     return str(value)
 
 
+def listed_attachment_names(text):
+    """File names from the "Attachments:" block that email-created user_input ends with, e.g. "- invoice.pdf"."""
+    names, in_block = [], False
+    for line in (text or "").splitlines():
+        if line.strip() == "Attachments:":
+            in_block = True
+        elif in_block and line.startswith("- "):
+            names.append(line[2:].strip())
+        elif in_block:
+            break
+    return names
+
+
+def read_entry(entry):
+    """Return (conversation_id, [sessions], listed_from_text) for one entry of the data file.
+
+    Every JSON shape the data file can have is handled here, so a new shape means a new branch:
+      - flat session (session-data.json): the entry is a session with its own "conversation_id" and
+        "user_input". It has no "session_attachment_list", so the expected attachment count is read from the
+        "Attachments:" list in the user_input (listed_from_text=True).
+      - conversation with "sessions" (data.json) or a single "session" (reply-data.json): the original shapes,
+        unchanged; the expected count comes from "session_attachment_list".
+    """
+    if "sessions" not in entry and "session" not in entry and "conversation_id" in entry and "user_input" in entry:
+        return plain_id(entry["conversation_id"]), [entry], True
+    session_list = entry.get("sessions") or ([entry["session"]] if entry.get("session") else [])
+    return plain_id(entry.get("_id")), session_list, False
+
+
 def load_sessions():
     """Return {session_id: item} in data file order.
 
@@ -148,11 +179,13 @@ def load_sessions():
     data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     sessions = {}
     for entry in data if isinstance(data, list) else [data]:
-        conversation_id = plain_id(entry.get("_id"))
-        session_list = entry.get("sessions") or ([entry["session"]] if entry.get("session") else [])
+        conversation_id, session_list, listed_from_text = read_entry(entry)
         for session in session_list:
             session_id = plain_id(session.get("_id"))
-            listed = len(session.get("session_attachment_list") or [])
+            if listed_from_text:
+                listed = len(listed_attachment_names(session.get("user_input")))
+            else:
+                listed = len(session.get("session_attachment_list") or [])
             folder = DOWNLOADS_DIR / conversation_id
             files = []
             if listed and folder.is_dir():
