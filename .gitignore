@@ -1,0 +1,32 @@
+# Secrets (tokens, Gmail app password). Keep only the .env.example templates.
+.env
+.env.*
+!.env.example
+
+# Downloaded attachments and run output
+downloads/
+runs/
+**/downloads/
+*.part
+
+# Customer data exports and run state
+data/
+records.csv
+conversation_id.csv
+session_ids.csv
+email-data.csv
+conversation_map.*.json
+report.json
+email_report.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
